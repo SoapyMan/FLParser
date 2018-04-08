@@ -95,6 +95,7 @@ namespace Monad.FLParser
             TextCommentRtf = Text + 6,
             TextVersion = Text + 7,
             GeneratorName = Text + 9,
+            TextProjectPath = Text + 10,
             TextPluginName = Text + 11,
             TextInsertName = Text + 12,
             TextMidiCtrls = Text + 16,

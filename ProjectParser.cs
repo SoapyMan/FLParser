@@ -6,14 +6,16 @@ using System.Text;
 
 namespace Monad.FLParser
 {
-    internal class ProjectParser
+    public class ProjectParser
     {
-        private readonly Project _project = new Project();
+        readonly public Project project = new Project();
         private Pattern _curPattern;
         private Channel _curChannel;
         private Insert _curInsert;
         private InsertSlot _curSlot;
         private readonly bool _verbose;
+
+        static Encoding _enc8 = Encoding.UTF8;
 
         public ProjectParser(bool verbose)
         {
@@ -22,7 +24,7 @@ namespace Monad.FLParser
 
         public Project Parse(BinaryReader reader)
         {
-            _curInsert = _project.Inserts[0];
+            _curInsert = project.Inserts[0];
 
             ParseHeader(reader);
             ParseFldt(reader);
@@ -32,7 +34,7 @@ namespace Monad.FLParser
                 ParseEvent(reader);
             }
 
-            return _project;
+            return project;
         }
 
         private void ParseHeader(BinaryReader reader)
@@ -54,12 +56,12 @@ namespace Monad.FLParser
                 throw new FlParseException($"Invalid number of channels: {channelCount}", reader.BaseStream.Position);
             for (var i = 0; i < channelCount; i++)
             {
-                _project.Channels.Add(new Channel { Id = i, Data = new GeneratorData() });
+                project.Channels.Add(new Channel { Id = i, Data = new GeneratorData() });
             }
 
             // ppq
-            _project.Ppq = reader.ReadInt16();
-            if (_project.Ppq < 0) throw new Exception($"Invalid PPQ: {_project.Ppq}");
+            project.Ppq = reader.ReadInt16();
+            if (project.Ppq < 0) throw new Exception($"Invalid PPQ: {project.Ppq}");
         }
 
         private void ParseFldt(BinaryReader reader)
@@ -104,7 +106,7 @@ namespace Monad.FLParser
             switch (eventId)
             {
                 case Enums.Event.ByteMainVol:
-                    _project.MainVolume = data;
+                    project.MainVolume = data;
                     break;
                 case Enums.Event.ByteUseLoopPoints:
                     if (genData != null) genData.SampleUseLoopPoints = true;
@@ -125,14 +127,14 @@ namespace Monad.FLParser
             switch (eventId)
             {
                 case Enums.Event.WordNewChan:
-                    _curChannel = _project.Channels[data];
+                    _curChannel = project.Channels[data];
                     break;
                 case Enums.Event.WordNewPat:
-                    while (_project.Patterns.Count < data) _project.Patterns.Add(new Pattern { Id = _project.Patterns.Count });
-                    _curPattern = _project.Patterns[data - 1];
+                    while (project.Patterns.Count < data) project.Patterns.Add(new Pattern { Id = project.Patterns.Count });
+                    _curPattern = project.Patterns[data - 1];
                     break;
                 case Enums.Event.WordTempo:
-                    _project.Tempo = data;
+                    project.Tempo = data;
                     break;
                 case Enums.Event.WordFadeStereo:
                     if (genData == null) break;
@@ -144,7 +146,7 @@ namespace Monad.FLParser
                     genData.SampleAmp = data;
                     break;
                 case Enums.Event.WordMainPitch:
-                    _project.MainPitch = data;
+                    project.MainPitch = data;
                     break;
                 case Enums.Event.WordInsertIcon:
                     _curInsert.Icon = data;
@@ -177,7 +179,7 @@ namespace Monad.FLParser
                     _curInsert.Color = data;
                     break;
                 case Enums.Event.DWordFineTempo:
-                    _project.Tempo = data / 1000.0;
+                    project.Tempo = data / 1000.0;
                     break;
             }
         }
@@ -199,8 +201,17 @@ namespace Monad.FLParser
         {
             var dataLen = GetBufferLen(reader);
             var dataBytes = reader.ReadBytes(dataLen);
-            var unicodeString = Encoding.Unicode.GetString(dataBytes);
-            if (unicodeString.EndsWith("\0")) unicodeString = unicodeString.Substring(0, unicodeString.Length - 1);
+
+            Decoder decoder8 = _enc8.GetDecoder();
+
+            int nChars = decoder8.GetCharCount(dataBytes, 0, dataLen);
+            char[] chars = new char[nChars];
+
+            nChars = decoder8.GetChars(dataBytes, 0, dataLen, chars, 0);
+            var unicodeString = new String(chars, 0, nChars);
+
+            if (unicodeString.EndsWith("\0"))
+                unicodeString = unicodeString.Substring(0, unicodeString.Length - 1);
 
             OutputLine($"text: {unicodeString}");
 
@@ -215,7 +226,10 @@ namespace Monad.FLParser
                     if (_curPattern != null) _curPattern.Name = unicodeString;
                     break;
                 case Enums.Event.TextTitle:
-                    _project.ProjectTitle = unicodeString;
+                    project.ProjectTitle = unicodeString;
+                    break;
+                case Enums.Event.TextProjectPath:
+                    project.ProjectPath = unicodeString;
                     break;
                 case Enums.Event.TextSampleFileName:
                     if (genData == null) break;
@@ -223,10 +237,10 @@ namespace Monad.FLParser
                     genData.GeneratorName = "Sampler";
                     break;
                 case Enums.Event.TextVersion:
-                    _project.VersionString = Encoding.UTF8.GetString(dataBytes);
-                    if (_project.VersionString.EndsWith("\0")) _project.VersionString = _project.VersionString.Substring(0, _project.VersionString.Length - 1);
-                    var numbers = _project.VersionString.Split('.');
-                    _project.Version = (int.Parse(numbers[0]) << 8) +
+                    project.VersionString = Encoding.UTF8.GetString(dataBytes);
+                    if (project.VersionString.EndsWith("\0")) project.VersionString = project.VersionString.Substring(0, project.VersionString.Length - 1);
+                    var numbers = project.VersionString.Split('.');
+                    project.Version = (int.Parse(numbers[0]) << 8) +
                                        (int.Parse(numbers[1]) << 4) +
                                        (int.Parse(numbers[2]) << 0);
                     break;
@@ -307,7 +321,7 @@ namespace Monad.FLParser
                         var x1 = reader.ReadByte();
                         var x2 = reader.ReadByte();
 
-                        var channel = _project.Channels[ch];
+                        var channel = project.Channels[ch];
                         if (!_curPattern.Notes.ContainsKey(channel)) _curPattern.Notes.Add(channel, new List<Note>());
                         _curPattern.Notes[channel].Add(new Note
                         {
@@ -335,7 +349,7 @@ namespace Monad.FLParser
                         var insertId = (channelData >> 6) & 0x7F;
                         var insertType = channelData >> 13;
 
-                        var insert = _project.Inserts[insertId];
+                        var insert = project.Inserts[insertId];
 
                         switch (messageId)
                         {
@@ -407,13 +421,13 @@ namespace Monad.FLParser
                         var paramDestination = reader.ReadInt16();
                         var unknown4 = reader.ReadUInt64();
 
-                        var channel = _project.Channels[automationChannel];
+                        var channel = project.Channels[automationChannel];
 
                         if ((paramDestination & 0x2000) == 0)  // Automation on channel
                         {
                             channel.Data = new AutomationData
                             {
-                                Channel = _project.Channels[paramDestination],
+                                Channel = project.Channels[paramDestination],
                                 Parameter = param & 0x7fff
                             };
                         }
@@ -446,13 +460,13 @@ namespace Monad.FLParser
                             var startOffset = reader.ReadSingle();
                             var endOffset = reader.ReadSingle();
 
-                            _project.Tracks[track].Items.Add(new ChannelPlaylistItem
+                            project.Tracks[track].Items.Add(new ChannelPlaylistItem
                             {
                                 Position = startTime,
                                 Length = length,
-                                StartOffset = (int)(startOffset * _project.Ppq),
+                                StartOffset = (int)(startOffset * project.Ppq),
                                 EndOffset = (int)(endOffset),
-                                Channel = _project.Channels[patternId]
+                                Channel = project.Channels[patternId]
                             });
                         }
                         else
@@ -460,13 +474,13 @@ namespace Monad.FLParser
                             var startOffset = reader.ReadInt32();
                             var endOffset = reader.ReadInt32();
 
-                            _project.Tracks[track].Items.Add(new PatternPlaylistItem
+                            project.Tracks[track].Items.Add(new PatternPlaylistItem
                             {
                                 Position = startTime,
                                 Length = length,
                                 StartOffset = startOffset,
                                 EndOffset = endOffset,
-                                Pattern = _project.Patterns[patternId - patternBase - 1]
+                                Pattern = project.Patterns[patternId - patternBase - 1]
                             });
                         }
                     }
@@ -500,7 +514,7 @@ namespace Monad.FLParser
 
                             autData.Keyframes[i] = new AutomationKeyframe
                             {
-                                Position = (int)(keyPos * _project.Ppq),
+                                Position = (int)(keyPos * project.Ppq),
                                 Tension = keyTension,
                                 Value = keyVal
                             };
@@ -516,7 +530,7 @@ namespace Monad.FLParser
                     }
 
                     var newIndex = _curInsert.Id + 1;
-                    if (newIndex < _project.Inserts.Length) _curInsert = _project.Inserts[newIndex];
+                    if (newIndex < project.Inserts.Length) _curInsert = project.Inserts[newIndex];
 
                     break;
                 case Enums.Event.DataInsertFlags:
